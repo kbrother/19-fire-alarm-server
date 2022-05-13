@@ -1,5 +1,6 @@
 %  ~/MATLAB/R2021a/bin/matlab -nodisplay -nodesktop -r "run('main.m');"
 % ps -A | grep MATLAB | awk '{print $1}' | xargs kill -9 $1
+% mosquitto_sub -h 143.248.221.190 -u kaist_fire -P 'KaistFire!123' -t /PRE_S/#
 addpath(genpath('lib'));
 addpath(genpath('sofia'));
 addpath(genpath('sofia/mylib'));
@@ -404,8 +405,10 @@ function cb(topic, msg)
 				end
 				W.(topic){i} = W_init(window_len, :);
 				% HW fitting
-				[~,L.(topic){i},B.(topic){i},F.(topic){i}] = hw_add_add_fit(W_init);	
-				
+				[~,tempL,tempB,F.(topic){i}] = hw_add_add_fit(W_init);	
+				L.(topic){i} = tempL(end,:);
+				B.(topic){i} = tempB(end,:)	;			
+
 				% Initialize error scale tensor
 				Ysz = size(init_tensor.(topic){i});
 				sigma.(topic){i} = 0.1*ones([Ysz(1), Ysz(2)]);							
