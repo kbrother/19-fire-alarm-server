@@ -1,16 +1,17 @@
 %  ~/MATLAB/R2021a/bin/matlab -nodisplay -nodesktop -r "run('main.m');"
-clc; 
-clear; 
-close all;
-
+% ps -A | grep MATLAB | awk '{print $1}' | xargs kill -9 $1
 addpath(genpath('lib'));
 addpath(genpath('sofia'));
 addpath(genpath('sofia/mylib'));
+addpath(genpath('MQTT'))
+javaaddpath('MQTT/jar/org.eclipse.paho.client.mqttv3-1.1.0.jar')
+javaaddpath('MQTT/mqttasync.jar')
 
 fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");
 fireSub = subscribe(fireMQTT, '/CFD/#', 'Callback', @cb);
 setCnt(0);
 declare_tensor();
+
 
 % function 
 function setCnt(val)
@@ -93,6 +94,7 @@ function initialize_tensor(topic, msg, num_channel, window_len, rank)
 	for i=1:num_channel										
 		num_id = max(msg(i).id);
 		real_num_id.(topic){i} = 0;
+		% fprintf("num id: %d\n", num_id);
 		for j=1:num_id			
 			if msg(i).err(j) == 0
 				real_num_id.(topic){i} = real_num_id.(topic){i} + 1;
@@ -120,8 +122,11 @@ function fill_tensor(topic, msg, num_channel, time_stamp)
 	for i=1:num_channel				
 		num_id = max(msg(i).id);
 		idx_cnt = 1;
-		for j=1:num_id		
-			if msg(i).err(j) == 1
+		%disp(num_id);
+		%disp(size(msg(i).temp));
+		%disp(size(init_tensor.(topic){i}));
+		for j=1:num_id				
+			if msg(i).err(j) ~= 0
 				continue
 			end
 			%fprintf("time_stamp: %d\n", time_stamp)
@@ -157,7 +162,7 @@ function fill_tensor(topic, msg, num_channel, time_stamp)
 			window_sq_sum.(topic){i}(idx_cnt, 4) = window_sq_sum.(topic){i}(idx_cnt, 4) + msg(i).pm2(idx_cnt).^2;
 			window_sq_sum.(topic){i}(idx_cnt, 5) = window_sq_sum.(topic){i}(idx_cnt, 5) + msg(i).pm10(idx_cnt).^2;
 			window_sq_sum.(topic){i}(idx_cnt, 6) = window_sq_sum.(topic){i}(idx_cnt, 6) + msg(i).co(idx_cnt).^2;
-			window_sq_sum.(topic){i}(idx_cnt, 7) = window_sq_sum.(topic){i}(idx_cnt, 7) + msg(i).co2(idx_cnt).^2;
+			window_sq_sum.(topic){i}(idx_cnt, 7) = window_sq_sum.(topic){i}(idx_cnt, 7) + msg(i).co2(idx_cnt).^2;				
 			idx_cnt = idx_cnt + 1;
 		end					
 	end	
@@ -214,7 +219,7 @@ function normalize_init_tensor(msg, topic, num_channel, window_len)
 		if real_num_id.(topic){i} > 0
 			avg_mat = window_sum.(topic){i} / window_len;
 			std_mat = sqrt(window_sq_sum.(topic){i} / window_len - avg_mat .* avg_mat);
-			std_mat(std_mat < 1e-5) = 1e-5;
+			std_mat(std_mat < 1e-2) = 1e-2;
 			init_tensor.(topic){i} = init_tensor.(topic){i} - tensor(repmat(avg_mat, 1, 1, window_len));
 			init_tensor.(topic){i} = init_tensor.(topic){i} ./ tensor(repmat(std_mat, 1, 1, window_len)) + 2;		
 		end		
@@ -233,7 +238,7 @@ function normalize_matrix(msg, topic, num_channel, window_len)
 			Yt.(topic){i} = tensor_window.(topic){i, window_len};
 			avg_mat = window_sum.(topic){i} / window_len;
 			std_mat = sqrt(window_sq_sum.(topic){i} / window_len - avg_mat .* avg_mat);
-			std_mat(std_mat < 1e-5) = 1e-5;
+			std_mat(std_mat < 1e-2) = 1e-2;
 			Yt.(topic){i} = Yt.(topic){i} -  avg_mat;
 			Yt.(topic){i} = Yt.(topic){i} ./ std_mat + 2;		
 		end		
@@ -248,7 +253,7 @@ function denorm_Xhat = denormalize_matrix(Xhat, topic, channel_id, window_len)
 	assert(real_num_id.(topic){channel_id} > 0);
 	avg_mat = window_sum.(topic){channel_id} / window_len;
 	std_mat = sqrt(window_sq_sum.(topic){channel_id} / window_len - avg_mat .* avg_mat);
-	std_mat(std_mat < 1e-5) = 1e-5;
+	std_mat(std_mat < 1e-2) = 1e-2;
 	denorm_Xhat = (Xhat - 2) .* std_mat + avg_mat;	
 end
 
@@ -265,30 +270,27 @@ function cb(topic, msg)
 	global real_num_id;
 	lambda1 = 0.001;
 	lambda3 = 10;
-	R = 2;
-	fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");
-    
+	R = 10;
+	fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");    
+
 	setCnt(getCnt + 1);
 	jsondata = jsondecode(msg);
-    %disp(jsondata)
-	%disp('-----cfd-------')
-	%disp(jsondata.cfd);
-
     topic = split(topic, "/");
 	topic = topic{3};
-	window_len = 2;
+	window_len = 10;
+	num_topic = 8;
 
 	num_channel = size(jsondata.cfd, 1);
-    if getCnt <= 3		
+    if getCnt <= num_topic		
 		initialize_tensor(topic, jsondata.cfd, num_channel, window_len, R);	   
-		%disp("init finish");
+		disp("init finish");
     end
-	if getCnt <= window_len*3
-		fill_tensor(topic, jsondata.cfd, num_channel, fix((getCnt-1)/3) + 1);
-		%disp("fill finish");
+	if getCnt <= window_len*num_topic
+		fill_tensor(topic, jsondata.cfd, num_channel, fix((getCnt-1)/num_topic) + 1);
+		disp("fill finish");
 	end
-	if getCnt > window_len*3
-		t_start = tic;
+
+	if getCnt > window_len*num_topic		
 		%disp("before update window");
 		update_window(topic, jsondata.cfd, num_channel, window_len);		
 		%disp("after update window")
@@ -298,7 +300,7 @@ function cb(topic, msg)
 		
 		% Dynamic updates			
 		output_json.pre = cell(num_channel, 1);
-		for i=1:num_channel
+		for i=1:num_channel		
 			if real_num_id.(topic){i} > 0
 				%disp(real_num_id.(topic){i});
 				Omega_temp = ones(real_num_id.(topic){i}, 7);
@@ -327,8 +329,9 @@ function cb(topic, msg)
 					U.(topic){i, n} = U.(topic){i, n} ./ (weights + 1e-4);
 					U_N = U_N .* weights;
 				end
-				
+							
 				[L.(topic){i}, B.(topic){i}] = hw_add_add_update(U_N, L.(topic){i}, B.(topic){i}, F.(topic){i});				
+				%disp("hw add add update");
 				W.(topic){i} = U_N;
 
 				X_hat = double(full(ktensor({U.(topic){i, 1}, U.(topic){i, 2}, U_N})));
@@ -348,7 +351,7 @@ function cb(topic, msg)
 				
 				curr_output.id = [1:num_id];	
 				for j=1:num_id					
-					if jsondata.cfd(i).err(j) > 0						
+					if jsondata.cfd(i).err(j) == 0						
 						curr_output.temp(j) = denorm_X_hat(idx_cnt, 1); 
 						curr_output.hum(j) = denorm_X_hat(idx_cnt, 2); 
 						curr_output.pm1(j) = denorm_X_hat(idx_cnt, 3); 
@@ -371,17 +374,19 @@ function cb(topic, msg)
 				curr_output.sw_v = jsondata.cfd(i).sw_v;
 				curr_output.tm = jsondata.cfd(i).tm;
 				output_json.pre{i} = curr_output;						
+
+				%disp("end");
 			else
-				output_json.pre{i} = jsondata.cfd;
+				output_json.pre{i} = jsondata.cfd(i);
 			end
 		end				
 		output_json = jsonencode(output_json);
 		%disp(output_json);
-		publish(fireMQTT, strcat('/PRE/', topic), output_json);
-		disp(toc(t_start));
+		publish(fireMQTT, strcat('/PRE_S/', topic), output_json);
+		%disp(toc(t_start));
 	end	
 	
-	if and(getCnt >= window_len*3 -2, getCnt <= window_len*3)		
+	if and(getCnt >= (window_len-1)*num_topic+1 , getCnt <= window_len*num_topic)		
 		% Normalize tensor
 		normalize_init_tensor(jsondata.cfd, topic, num_channel, window_len);		
 		for i=1:num_channel		
@@ -403,11 +408,10 @@ function cb(topic, msg)
 				
 				% Initialize error scale tensor
 				Ysz = size(init_tensor.(topic){i});
-				sigma.(topic){i} = 0.1.*ones([Ysz(1), Ysz(2)]);							
+				sigma.(topic){i} = 0.1*ones([Ysz(1), Ysz(2)]);							
 			end
 		end		
-	end
-	%fprintf("cnt: %d\n", getCnt);
+	end	
 end
 
 
