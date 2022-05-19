@@ -246,7 +246,7 @@ function normalize_matrix(msg, topic, num_channel, window_len)
 			std_mat = sqrt(window_sq_sum.(topic){i} / window_len - avg_mat .* avg_mat);
 			std_mat(std_mat < 1e-2) = 1e-2;
 			Yt.(topic){i} = Yt.(topic){i} - avg_mat;
-			Yt.(topic){i} = Yt.(topic){i} ./ std_mat + 2;		
+			Yt.(topic){i} = Yt.(topic){i} ./ std_mat;		
 		end		
 	end
 end
@@ -260,7 +260,7 @@ function denorm_Xhat = denormalize_matrix(Xhat, topic, channel_id, window_len)
 	avg_mat = window_sum.(topic){channel_id} / window_len;
 	std_mat = sqrt(window_sq_sum.(topic){channel_id} / window_len - avg_mat .* avg_mat);
 	std_mat(std_mat < 1e-2) = 1e-2;
-	denorm_Xhat = (Xhat - 2) .* std_mat + avg_mat;	
+	denorm_Xhat = Xhat .* std_mat + avg_mat;	
 end
 
 function cb(topic, msg)
@@ -307,7 +307,7 @@ function cb(topic, msg)
 		% Dynamic updates			
 		output_json.pre = cell(num_channel, 1);
 		for i=1:num_channel		
-		%for i=1:2
+			num_id = max(jsondata.cfd(i).id);
 			if real_num_id.(topic){i} > 0				
 				%disp("check 1");
 				Omega_temp = ones(real_num_id.(topic){i}, 7);
@@ -315,26 +315,24 @@ function cb(topic, msg)
 				U_N = hw_add_add_forecast(L.(topic){i}, B.(topic){i}, 1);			
 				%disp("check 3");
 
-				for ii=1:5
-					Ythat = U.(topic){i, 1} * diag(U_N) * U.(topic){i, 2}';								
+				Ythat = U.(topic){i, 1} * diag(U_N) * U.(topic){i, 2}';								
 
-					Rt = Yt.(topic){i} - Ythat;								
-					cRt = huber(Rt./sigma.(topic){i}) .*sigma.(topic){i};								
-					sigma.(topic){i} = sigma_update(sigma.(topic){i}, Rt, Omega_temp, 0.01);
-											
-					cRt = Omega_temp .* cRt;			
-					G = cell(3, 1);
-					G{1} = cRt * U.(topic){i, 2} * diag(U_N);
-					G{2} = cRt' * U.(topic){i, 1} * diag(U_N);													
-					G{3} = (khatrirao(U.(topic){i, 1},U.(topic){i, 2})' * reshape(cRt,[],1))' + 0.001 * (W.(topic){i} - U_N);
+				Rt = Yt.(topic){i} - Ythat;								
+				cRt = huber(Rt./sigma.(topic){i}) .*sigma.(topic){i};								
+				sigma.(topic){i} = sigma_update(sigma.(topic){i}, Rt, Omega_temp, 0.01);
+										
+				cRt = Omega_temp .* cRt;			
+				G = cell(3, 1);
+				G{1} = cRt * U.(topic){i, 2} * diag(U_N);
+				G{2} = cRt' * U.(topic){i, 1} * diag(U_N);													
+				G{3} = (khatrirao(U.(topic){i, 1},U.(topic){i, 2})' * reshape(cRt,[],1))' + 0.001 * (W.(topic){i} - U_N);
 
-					for n=1:2
-						G{n} = G{n} * min(1, 0.1 * sqrt(rank.(topic){i})/norm(G{n}, 'fro')); % What?
-						U.(topic){i, n} = U.(topic){i, n} + 0.1 * G{n};
-					end				
-					G{3} = G{3} * min(1, 0.1 * sqrt(rank.(topic){i})/norm(G{3}, 'fro')); % What?
-					U_N = U_N + 0.1 * G{3};
-				end
+				for n=1:2
+					G{n} = G{n} * min(1, 0.1 * sqrt(rank.(topic){i})/norm(G{n}, 'fro')); % What?
+					U.(topic){i, n} = U.(topic){i, n} + 0.1 * G{n};
+				end				
+				G{3} = G{3} * min(1, 0.1 * sqrt(rank.(topic){i})/norm(G{3}, 'fro')); % What?
+				U_N = U_N + 0.1 * G{3};
 								
 				for n=1:2
 					weights = sqrt(sum(U.(topic){i, n}.^2, 1));
@@ -348,45 +346,67 @@ function cb(topic, msg)
 
 				X_hat = double(full(ktensor({U.(topic){i, 1}, U.(topic){i, 2}, U_N})));
 				denorm_X_hat = denormalize_matrix(X_hat, topic, i, window_len);				
-				curr_output.ch = i;			
-				num_id = max(jsondata.cfd(i).id);
+				curr_output.ch = i;				
 				idx_cnt = 1;
 
-				curr_output.id = zeros(num_id, 1);
-				curr_output.temp = zeros(num_id, 1);
-				curr_output.hum = zeros(num_id, 1);
-				curr_output.pm1 = zeros(num_id, 1);
-				curr_output.pm2 = zeros(num_id, 1);
-				curr_output.pm10 = zeros(num_id, 1);
-				curr_output.co2 = zeros(num_id, 1);
-				curr_output.co = zeros(num_id, 1);
-				
-				curr_output.id = [1:num_id];	
-				for j=1:num_id					
-					if jsondata.cfd(i).err(j) == 0						
-						curr_output.temp(j) = denorm_X_hat(idx_cnt, 1); 
-						curr_output.hum(j) = denorm_X_hat(idx_cnt, 2); 
-						curr_output.pm1(j) = denorm_X_hat(idx_cnt, 3); 
-						curr_output.pm2(j) = denorm_X_hat(idx_cnt, 4); 
-						curr_output.pm10(j) = denorm_X_hat(idx_cnt, 5); 
-						curr_output.co2(j) = denorm_X_hat(idx_cnt, 6); 
-						curr_output.co(j) = denorm_X_hat(idx_cnt, 7); 							
-						idx_cnt = idx_cnt + 1;
-					else
-						curr_output.temp(j) = jsondata.cfd(i).temp(j);
-						curr_output.hum(j) = jsondata.cfd(i).hum(j);
-						curr_output.pm1(j) = jsondata.cfd(i).pm1(j); 
-						curr_output.pm2(j) = jsondata.cfd(i).pm2(j); 
-						curr_output.pm10(j) = jsondata.cfd(i).pm10(j); 
-						curr_output.co2(j) = jsondata.cfd(i).co2(j); 
-						curr_output.co(j) = jsondata.cfd(i).co(j);	
-					end					
-				end		
-				curr_output.err = jsondata.cfd(i).err;
+				if num_id == 1
+					curr_output.id = {1};																								
+					curr_output.temp = {denorm_X_hat(1, 1)}; 
+					curr_output.hum = {denorm_X_hat(1, 2)}; 
+					curr_output.pm1 = {denorm_X_hat(1, 3)}; 
+					curr_output.pm2 = {denorm_X_hat(1, 4)}; 
+					curr_output.pm10 = {denorm_X_hat(1, 5)}; 
+					curr_output.co2 = {denorm_X_hat(1, 6)}; 
+					curr_output.co = {denorm_X_hat(1, 7)};
+					curr_output.err = {jsondata.cfd(i).err}; 																		
+				else	
+					curr_output.temp = zeros(num_id, 1);
+					curr_output.hum = zeros(num_id, 1);
+					curr_output.pm1 = zeros(num_id, 1);
+					curr_output.pm2 = zeros(num_id, 1);
+					curr_output.pm10 = zeros(num_id, 1);
+					curr_output.co2 = zeros(num_id, 1);
+					curr_output.co = zeros(num_id, 1);
+					
+					curr_output.id = [1:num_id];	
+					for j=1:num_id					
+						if jsondata.cfd(i).err(j) == 0						
+							curr_output.temp(j) = denorm_X_hat(idx_cnt, 1); 
+							curr_output.hum(j) = denorm_X_hat(idx_cnt, 2); 
+							curr_output.pm1(j) = denorm_X_hat(idx_cnt, 3); 
+							curr_output.pm2(j) = denorm_X_hat(idx_cnt, 4); 
+							curr_output.pm10(j) = denorm_X_hat(idx_cnt, 5); 
+							curr_output.co2(j) = denorm_X_hat(idx_cnt, 6); 
+							curr_output.co(j) = denorm_X_hat(idx_cnt, 7); 							
+							idx_cnt = idx_cnt + 1;
+						else
+							curr_output.temp(j) = jsondata.cfd(i).temp(j);
+							curr_output.hum(j) = jsondata.cfd(i).hum(j);
+							curr_output.pm1(j) = jsondata.cfd(i).pm1(j); 
+							curr_output.pm2(j) = jsondata.cfd(i).pm2(j); 
+							curr_output.pm10(j) = jsondata.cfd(i).pm10(j); 
+							curr_output.co2(j) = jsondata.cfd(i).co2(j); 
+							curr_output.co(j) = jsondata.cfd(i).co(j);	
+						end					
+					end	
+					curr_output.err = jsondata.cfd(i).err;	
+				end
 				curr_output.sw_v = jsondata.cfd(i).sw_v;
 				curr_output.tm = jsondata.cfd(i).tm;
 				output_json.pre{i} = curr_output;						
-
+			elseif num_id == 1
+				curr_output.id = {1};	
+				curr_output.temp = {jsondata.cfd(i).temp(1)};
+				curr_output.hum = {jsondata.cfd(i).hum(1)};
+				curr_output.pm1 = {jsondata.cfd(i).pm1(1)}; 
+				curr_output.pm2 = {jsondata.cfd(i).pm2(1)}; 
+				curr_output.pm10 = {jsondata.cfd(i).pm10(1)}; 
+				curr_output.co2 = {jsondata.cfd(i).co2(1)}; 
+				curr_output.co = {jsondata.cfd(i).co(1)};	
+				curr_output.err = {jsondata.cfd(i).err};
+				curr_output.sw_v = jsondata.cfd(i).sw_v;
+				curr_output.tm = jsondata.cfd(i).tm;
+				output_json.pre{i} = curr_output;
 			else
 				output_json.pre{i} = jsondata.cfd(i);
 			end	
