@@ -283,7 +283,7 @@ function cb(topic, msg)
 	jsondata = jsondecode(msg);
     topic = split(topic, "/");
 	topic = topic{3};
-	window_len = 500;
+	window_len = 1000;
 	num_topic = 9;
 
 	num_channel = size(jsondata.cfd, 1);
@@ -308,6 +308,7 @@ function cb(topic, msg)
 		output_json.pre = cell(num_channel, 1);
 		for i=1:num_channel		
 			num_id = max(jsondata.cfd(i).id);
+			curr_output.ch = i;	
 			if real_num_id.(topic){i} > 0				
 				%disp("check 1");
 				Omega_temp = ones(real_num_id.(topic){i}, 7);
@@ -345,8 +346,7 @@ function cb(topic, msg)
 				W.(topic){i} = U_N;
 
 				X_hat = double(full(ktensor({U.(topic){i, 1}, U.(topic){i, 2}, U_N})));
-				denorm_X_hat = denormalize_matrix(X_hat, topic, i, window_len);				
-				curr_output.ch = i;				
+				denorm_X_hat = denormalize_matrix(X_hat, topic, i, window_len);								
 				idx_cnt = 1;
 
 				if num_id == 1
