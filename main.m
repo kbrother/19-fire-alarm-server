@@ -347,6 +347,7 @@ function cb(topic, msg)
 
 				X_hat = double(full(ktensor({U.(topic){i, 1}, U.(topic){i, 2}, U_N})));
 				denorm_X_hat = denormalize_matrix(X_hat, topic, i, window_len);								
+				denorm_x_hat(denorm_X_hat < 0) = 1e-2;
 				idx_cnt = 1;
 
 				if num_id == 1
