@@ -42,7 +42,6 @@ function declare_tensor
 	global Yt
 	global W
 	global real_num_id
-	global rank
 
 	init_tensor = struct;
 	tensor_window = struct;
@@ -57,8 +56,7 @@ function declare_tensor
 	sigma = struct;
 	Yt = struct;
 	W = struct;
-	real_num_id = struct;
-	rank = struct;
+	real_num_id = struct;	
 end
 
 function initialize_tensor(topic, msg, num_channel, window_len)
@@ -67,7 +65,6 @@ function initialize_tensor(topic, msg, num_channel, window_len)
 	global tensor_window	
 	global window_sum
 	global window_sq_sum
-	global output_json
 	global U
 	global sigma
 	global Yt
@@ -75,8 +72,7 @@ function initialize_tensor(topic, msg, num_channel, window_len)
 	global L 
 	global B
 	global F
-	global real_num_id
-	global rank
+	global real_num_id	
 
 	fprintf('number of channel in this topic: %d\n', num_channel);
 	if ~isfield(init_tensor, topic)
@@ -84,15 +80,13 @@ function initialize_tensor(topic, msg, num_channel, window_len)
 		tensor_window.(topic) = cell(num_channel, window_len);
 		window_sum.(topic) = cell(num_channel, 1);
 		window_sq_sum.(topic) = cell(num_channel, 1);
-		U.(topic) = cell(num_channel, 2);
-		output_json.(topic) = cell(num_channel, 1);
+		U.(topic) = cell(num_channel, 2);		
 		sigma.(topic) = cell(num_channel, 1);
 		Yt.(topic) = cell(num_channel, 1);
 		W.(topic) = cell(num_channel, 1);
 		L.(topic) = cell(num_channel, 1);
 		B.(topic) = cell(num_channel, 1);
 		F.(topic) = cell(num_channel, 1);
-		rank.(topic) = cell(num_channel, 1);
 		real_num_id.(topic) = cell(num_channel, 1);
 	end 					
 		
@@ -106,10 +100,8 @@ function initialize_tensor(topic, msg, num_channel, window_len)
 			end
 		end
 
-		rank.(topic){i} = 20;
 		if real_num_id.(topic){i} > 0
 			init_tensor.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);
-			O.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);
 			for j=1:window_len
 				tensor_window.(topic){i, j} = zeros(real_num_id.(topic){i}, 7);
 			end		
@@ -127,48 +119,43 @@ function fill_tensor(topic, msg, num_channel, time_stamp)
 	
 	for i=1:num_channel				
 		num_id = max(msg(i).id);
-		idx_cnt = 1;
-		%disp(num_id);
-		%disp(size(msg(i).temp));
-		%disp(size(init_tensor.(topic){i}));
+		idx_cnt = 1;		
 		for j=1:num_id				
 			if msg(i).err(j) ~= 0
 				continue
-			end
-			%fprintf("time_stamp: %d\n", time_stamp)
-			%disp(size(init_tensor.(topic){i}));
-			init_tensor.(topic){i}(idx_cnt, 1, time_stamp) = msg(i).temp(idx_cnt);
-			init_tensor.(topic){i}(idx_cnt, 2, time_stamp) = msg(i).hum(idx_cnt);
-			init_tensor.(topic){i}(idx_cnt, 3, time_stamp) = msg(i).pm1(idx_cnt);
-			init_tensor.(topic){i}(idx_cnt, 4, time_stamp) = msg(i).pm2(idx_cnt);
-			init_tensor.(topic){i}(idx_cnt, 5, time_stamp) = msg(i).pm10(idx_cnt);
-			init_tensor.(topic){i}(idx_cnt, 6, time_stamp) = msg(i).co2(idx_cnt);
-			init_tensor.(topic){i}(idx_cnt, 7, time_stamp) = msg(i).co(idx_cnt);			
+			end			
+			init_tensor.(topic){i}(idx_cnt, 1, time_stamp) = msg(i).temp(j);
+			init_tensor.(topic){i}(idx_cnt, 2, time_stamp) = msg(i).hum(j);
+			init_tensor.(topic){i}(idx_cnt, 3, time_stamp) = msg(i).pm1(j);
+			init_tensor.(topic){i}(idx_cnt, 4, time_stamp) = msg(i).pm2(j);
+			init_tensor.(topic){i}(idx_cnt, 5, time_stamp) = msg(i).pm10(j);
+			init_tensor.(topic){i}(idx_cnt, 6, time_stamp) = msg(i).co2(j);
+			init_tensor.(topic){i}(idx_cnt, 7, time_stamp) = msg(i).co(j);			
 			%fprintf("fill tensor end\n"); 
 
-			tensor_window.(topic){i, time_stamp}(idx_cnt, 1) = msg(i).temp(idx_cnt);
-			tensor_window.(topic){i, time_stamp}(idx_cnt, 2) = msg(i).hum(idx_cnt);
-			tensor_window.(topic){i, time_stamp}(idx_cnt, 3) = msg(i).pm1(idx_cnt);
-			tensor_window.(topic){i, time_stamp}(idx_cnt, 4) = msg(i).pm2(idx_cnt);
-			tensor_window.(topic){i, time_stamp}(idx_cnt, 5) = msg(i).pm10(idx_cnt);
-			tensor_window.(topic){i, time_stamp}(idx_cnt, 6) = msg(i).co2(idx_cnt);
-			tensor_window.(topic){i, time_stamp}(idx_cnt, 7) = msg(i).co(idx_cnt);			
+			tensor_window.(topic){i, time_stamp}(idx_cnt, 1) = msg(i).temp(j);
+			tensor_window.(topic){i, time_stamp}(idx_cnt, 2) = msg(i).hum(j);
+			tensor_window.(topic){i, time_stamp}(idx_cnt, 3) = msg(i).pm1(j);
+			tensor_window.(topic){i, time_stamp}(idx_cnt, 4) = msg(i).pm2(j);
+			tensor_window.(topic){i, time_stamp}(idx_cnt, 5) = msg(i).pm10(j);
+			tensor_window.(topic){i, time_stamp}(idx_cnt, 6) = msg(i).co2(j);
+			tensor_window.(topic){i, time_stamp}(idx_cnt, 7) = msg(i).co(j);			
 			
-			window_sum.(topic){i}(idx_cnt, 1) = window_sum.(topic){i}(idx_cnt, 1) + msg(i).temp(idx_cnt);
-			window_sum.(topic){i}(idx_cnt, 2) = window_sum.(topic){i}(idx_cnt, 2) + msg(i).hum(idx_cnt);
-			window_sum.(topic){i}(idx_cnt, 3) = window_sum.(topic){i}(idx_cnt, 3) + msg(i).pm1(idx_cnt);
-			window_sum.(topic){i}(idx_cnt, 4) = window_sum.(topic){i}(idx_cnt, 4) + msg(i).pm2(idx_cnt);
-			window_sum.(topic){i}(idx_cnt, 5) = window_sum.(topic){i}(idx_cnt, 5) + msg(i).pm10(idx_cnt);
-			window_sum.(topic){i}(idx_cnt, 6) = window_sum.(topic){i}(idx_cnt, 6) + msg(i).co2(idx_cnt);
-			window_sum.(topic){i}(idx_cnt, 7) = window_sum.(topic){i}(idx_cnt, 7) + msg(i).co(idx_cnt);	
+			window_sum.(topic){i}(idx_cnt, 1) = window_sum.(topic){i}(idx_cnt, 1) + msg(i).temp(j);
+			window_sum.(topic){i}(idx_cnt, 2) = window_sum.(topic){i}(idx_cnt, 2) + msg(i).hum(j);
+			window_sum.(topic){i}(idx_cnt, 3) = window_sum.(topic){i}(idx_cnt, 3) + msg(i).pm1(j);
+			window_sum.(topic){i}(idx_cnt, 4) = window_sum.(topic){i}(idx_cnt, 4) + msg(i).pm2(j);
+			window_sum.(topic){i}(idx_cnt, 5) = window_sum.(topic){i}(idx_cnt, 5) + msg(i).pm10(j);
+			window_sum.(topic){i}(idx_cnt, 6) = window_sum.(topic){i}(idx_cnt, 6) + msg(i).co2(j);
+			window_sum.(topic){i}(idx_cnt, 7) = window_sum.(topic){i}(idx_cnt, 7) + msg(i).co(j);	
 						
-			window_sq_sum.(topic){i}(idx_cnt, 1) = window_sq_sum.(topic){i}(idx_cnt, 1) + msg(i).temp(idx_cnt).^2;
-			window_sq_sum.(topic){i}(idx_cnt, 2) = window_sq_sum.(topic){i}(idx_cnt, 2) + msg(i).hum(idx_cnt).^2;
-			window_sq_sum.(topic){i}(idx_cnt, 3) = window_sq_sum.(topic){i}(idx_cnt, 3) + msg(i).pm1(idx_cnt).^2;
-			window_sq_sum.(topic){i}(idx_cnt, 4) = window_sq_sum.(topic){i}(idx_cnt, 4) + msg(i).pm2(idx_cnt).^2;
-			window_sq_sum.(topic){i}(idx_cnt, 5) = window_sq_sum.(topic){i}(idx_cnt, 5) + msg(i).pm10(idx_cnt).^2;
-			window_sq_sum.(topic){i}(idx_cnt, 6) = window_sq_sum.(topic){i}(idx_cnt, 6) + msg(i).co2(idx_cnt).^2;
-			window_sq_sum.(topic){i}(idx_cnt, 7) = window_sq_sum.(topic){i}(idx_cnt, 7) + msg(i).co(idx_cnt).^2;				
+			window_sq_sum.(topic){i}(idx_cnt, 1) = window_sq_sum.(topic){i}(idx_cnt, 1) + msg(i).temp(j).^2;
+			window_sq_sum.(topic){i}(idx_cnt, 2) = window_sq_sum.(topic){i}(idx_cnt, 2) + msg(i).hum(j).^2;
+			window_sq_sum.(topic){i}(idx_cnt, 3) = window_sq_sum.(topic){i}(idx_cnt, 3) + msg(i).pm1(j).^2;
+			window_sq_sum.(topic){i}(idx_cnt, 4) = window_sq_sum.(topic){i}(idx_cnt, 4) + msg(i).pm2(j).^2;
+			window_sq_sum.(topic){i}(idx_cnt, 5) = window_sq_sum.(topic){i}(idx_cnt, 5) + msg(i).pm10(j).^2;
+			window_sq_sum.(topic){i}(idx_cnt, 6) = window_sq_sum.(topic){i}(idx_cnt, 6) + msg(i).co2(j).^2;
+			window_sq_sum.(topic){i}(idx_cnt, 7) = window_sq_sum.(topic){i}(idx_cnt, 7) + msg(i).co(j).^2;				
 			idx_cnt = idx_cnt + 1;
 		end					
 	end	
@@ -185,16 +172,14 @@ function update_window(topic, msg, num_channel, window_len)
 			% Update window sum and square sum
 			window_sum.(topic){i} = window_sum.(topic){i} - tensor_window.(topic){i, 1};		
 			window_sq_sum.(topic){i} = window_sq_sum.(topic){i} - tensor_window.(topic){i, 1}.*tensor_window.(topic){i, 1};				
-			%disp("here");
-
-			% Update tensor window
-			num_id = max(msg(i).id);
+			
+			% Update tensor window			
 			for j=1:(window_len-1)
 				tensor_window.(topic){i, j} = tensor_window.(topic){i, j + 1}; 
-			end		
-			%disp("here1");
+			end					
 
 			idx_cnt = 1;
+			num_id = max(msg(i).id);
 			for j=1:num_id
 				if msg(i).err(j) == 0
 					tensor_window.(topic){i, window_len}(idx_cnt, 1) = msg(i).temp(j);
@@ -206,8 +191,7 @@ function update_window(topic, msg, num_channel, window_len)
 					tensor_window.(topic){i, window_len}(idx_cnt, 7) = msg(i).co(j);	
 					idx_cnt = idx_cnt + 1;
 				end
-			end
-			%disp("here2");
+			end			
 
 			window_sum.(topic){i} = window_sum.(topic){i} + tensor_window.(topic){i, window_len};		
 			window_sq_sum.(topic){i} = window_sq_sum.(topic){i} + tensor_window.(topic){i, window_len}.*tensor_window.(topic){i, window_len};				
@@ -225,9 +209,9 @@ function normalize_init_tensor(msg, topic, num_channel, window_len)
 		if real_num_id.(topic){i} > 0
 			avg_mat = window_sum.(topic){i} / window_len;
 			std_mat = sqrt(window_sq_sum.(topic){i} / window_len - avg_mat .* avg_mat);
-			std_mat(std_mat < 1e-2) = 1e-2;
+			std_mat(std_mat < 1e-3) = 1e-3;
 			init_tensor.(topic){i} = init_tensor.(topic){i} - tensor(repmat(avg_mat, 1, 1, window_len));
-			init_tensor.(topic){i} = init_tensor.(topic){i} ./ tensor(repmat(std_mat, 1, 1, window_len)) + 2;		
+			init_tensor.(topic){i} = init_tensor.(topic){i} ./ tensor(repmat(std_mat, 1, 1, window_len));		
 		end		
 	end	
 end
@@ -244,7 +228,7 @@ function normalize_matrix(msg, topic, num_channel, window_len)
 			Yt.(topic){i} = tensor_window.(topic){i, window_len};
 			avg_mat = window_sum.(topic){i} / window_len;
 			std_mat = sqrt(window_sq_sum.(topic){i} / window_len - avg_mat .* avg_mat);
-			std_mat(std_mat < 1e-2) = 1e-2;
+			std_mat(std_mat < 1e-3) = 1e-3;
 			Yt.(topic){i} = Yt.(topic){i} - avg_mat;
 			Yt.(topic){i} = Yt.(topic){i} ./ std_mat;		
 		end		
@@ -259,7 +243,7 @@ function denorm_Xhat = denormalize_matrix(Xhat, topic, channel_id, window_len)
 	assert(real_num_id.(topic){channel_id} > 0);
 	avg_mat = window_sum.(topic){channel_id} / window_len;
 	std_mat = sqrt(window_sq_sum.(topic){channel_id} / window_len - avg_mat .* avg_mat);
-	std_mat(std_mat < 1e-2) = 1e-2;
+	std_mat(std_mat < 1e-3) = 1e-3;
 	denorm_Xhat = Xhat .* std_mat + avg_mat;	
 end
 
@@ -273,18 +257,20 @@ function cb(topic, msg)
 	global Yt
 	global sigma
 	global W
-	global real_num_id;
-	global rank
+	global real_num_id;	
 	lambda1 = 0.001;
 	lambda3 = 10;
+	mu = 0.1;
 	fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");    
 
 	setCnt(getCnt + 1);
 	jsondata = jsondecode(msg);
     topic = split(topic, "/");
 	topic = topic{3};
-	window_len = 1000;
+	window_len = 100;
 	num_topic = 9;
+	num_gd = 5;
+	rank = 20;
 
 	num_channel = size(jsondata.cfd, 1);
     if getCnt <= num_topic		
@@ -296,26 +282,19 @@ function cb(topic, msg)
 		disp("fill finish");
 	end
 
-	if getCnt > window_len*num_topic		
-		%disp("before update window");
-		update_window(topic, jsondata.cfd, num_channel, window_len);		
-		%disp("after update window")
-		normalize_matrix(jsondata.cfd, topic, num_channel, window_len);
-		%disp("after normalize matrix")
-		colons  = repmat({':'}, 1, 2);
+	if getCnt > window_len*num_topic				
+		update_window(topic, jsondata.cfd, num_channel, window_len);			
+		normalize_matrix(jsondata.cfd, topic, num_channel, window_len);		
 		
 		% Dynamic updates			
 		output_json.pre = cell(num_channel, 1);
 		for i=1:num_channel		
 			num_id = max(jsondata.cfd(i).id);
 			curr_output.ch = i;	
-			if real_num_id.(topic){i} > 0				
-				%disp("check 1");
-				Omega_temp = ones(real_num_id.(topic){i}, 7);
-				%disp("check 2");
-				U_N = hw_add_add_forecast(L.(topic){i}, B.(topic){i}, 1);			
-				%disp("check 3");
 
+			if real_num_id.(topic){i} > 0				
+				Omega_temp = ones(real_num_id.(topic){i}, 7);
+				U_N = hw_add_add_forecast(L.(topic){i}, B.(topic){i}, 1);						
 				Ythat = U.(topic){i, 1} * diag(U_N) * U.(topic){i, 2}';								
 
 				Rt = Yt.(topic){i} - Ythat;								
@@ -324,17 +303,20 @@ function cb(topic, msg)
 										
 				cRt = Omega_temp .* cRt;			
 				G = cell(3, 1);
-				G{1} = cRt * U.(topic){i, 2} * diag(U_N);
-				G{2} = cRt' * U.(topic){i, 1} * diag(U_N);													
-				G{3} = (khatrirao(U.(topic){i, 1},U.(topic){i, 2})' * reshape(cRt,[],1))' + 0.001 * (W.(topic){i} - U_N);
 
-				for n=1:2
-					G{n} = G{n} * min(1, 0.1 * sqrt(rank.(topic){i})/norm(G{n}, 'fro')); % What?
-					U.(topic){i, n} = U.(topic){i, n} + 0.1 * G{n};
-				end				
-				G{3} = G{3} * min(1, 0.1 * sqrt(rank.(topic){i})/norm(G{3}, 'fro')); % What?
-				U_N = U_N + 0.1 * G{3};
-								
+				for j=1:num_gd
+					G{1} = cRt * U.(topic){i, 2} * diag(U_N);
+					G{2} = cRt' * U.(topic){i, 1} * diag(U_N);													
+					G{3} = (khatrirao(U.(topic){i, 1},U.(topic){i, 2})' * reshape(cRt,[],1))' + lambda1 * (W.(topic){i} - U_N);
+
+					for n=1:2
+						G{n} = G{n} * min(1, mu * sqrt(rank)/norm(G{n}, 'fro')); % What?
+						U.(topic){i, n} = U.(topic){i, n} + mu * G{n};
+					end				
+					G{3} = G{3} * min(1, mu* sqrt(rank)/norm(G{3}, 'fro')); % What?
+					U_N = U_N + mu * G{3};
+				end
+
 				for n=1:2
 					weights = sqrt(sum(U.(topic){i, n}.^2, 1));
 					U.(topic){i, n} = U.(topic){i, n} ./ weights;
@@ -347,7 +329,7 @@ function cb(topic, msg)
 
 				X_hat = double(full(ktensor({U.(topic){i, 1}, U.(topic){i, 2}, U_N})));
 				denorm_X_hat = denormalize_matrix(X_hat, topic, i, window_len);								
-				denorm_x_hat(denorm_X_hat < 0) = 1e-2;
+				denorm_X_hat(denorm_X_hat < 0) = 1e-2;
 				idx_cnt = 1;
 
 				if num_id == 1
@@ -388,7 +370,7 @@ function cb(topic, msg)
 							curr_output.pm10(j) = jsondata.cfd(i).pm10(j); 
 							curr_output.co2(j) = jsondata.cfd(i).co2(j); 
 							curr_output.co(j) = jsondata.cfd(i).co(j);	
-						end					
+						end											
 					end	
 					curr_output.err = jsondata.cfd(i).err;	
 				end
@@ -413,9 +395,7 @@ function cb(topic, msg)
 			end	
 		end				
 		output_json = jsonencode(output_json);
-		%disp(output_json);
-		publish(fireMQTT, strcat('/PRE_S/', topic), output_json);
-		%disp(toc(t_start));
+		publish(fireMQTT, strcat('/PRE_S/', topic), output_json);	
 	end	
 	
 	if and(getCnt >= (window_len-1)*num_topic+1 , getCnt <= window_len*num_topic)		
@@ -425,8 +405,7 @@ function cb(topic, msg)
 			% Initialization
 			if real_num_id.(topic){i} > 0
 				omega_temp = logical(double(tenones([real_num_id.(topic){i} 7 window_len])));
-				%disp(rank.(topic){i})
-				[U_init, X_hat.(topic), O.(topic), ~] = sofia_init(init_tensor.(topic){i}, omega_temp, rank.(topic){i}, lambda1, lambda3);							
+				[U_init, X_hat.(topic), O.(topic), ~] = sofia_init(init_tensor.(topic){i}, omega_temp, rank, lambda1, lambda3);							
 				U.(topic){i, 1} = U_init{1};											
 				U.(topic){i, 2} = U_init{2};				
 				W_init = U_init{3};					
@@ -436,6 +415,7 @@ function cb(topic, msg)
 					W_init = W_init .* weights;
 				end
 				W.(topic){i} = W_init(window_len, :);
+
 				% HW fitting				
 				[~,tempL,tempB,F.(topic){i}] = hw_add_add_fit(W_init);	
 				L.(topic){i} = tempL(end,:);
