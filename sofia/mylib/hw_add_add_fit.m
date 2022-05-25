@@ -154,7 +154,6 @@ f = norm((l + b) - y)^2;
 end
 
 
-
 function [y_hat, l, b] = hw_add_add_predict(x, y)
 
 len = length(y);
