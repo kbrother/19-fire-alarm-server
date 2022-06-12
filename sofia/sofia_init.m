@@ -9,7 +9,8 @@ maxIters = 100;
 fitchangetol = 1e-3;
 als_printitn = 0;
 
-fprintf('\nsofia_init: start!\n');
+%fprintf('\nsofia_init: start!\n');
+
 
 %% Parameter setting
 Y       = double(Y);
@@ -22,6 +23,7 @@ for n = 1:N
     U_init{n} = rand(Ysz(n),R);
 end
 
+
 %% Set up for iteration
 U = U_init;
 O = zeros(Ysz);
@@ -29,14 +31,15 @@ X = zeros(Ysz);
 normX = 0;
 lambda3_init = lambda3;
 
+
 %% Main Loop
 t_begin = tic();
 for epoch = 1:maxEpoch
     Xpre = X;
     normXpre = normX;
     
-    Yo = Y-O;        
-    [U,X] = sofia_als(Yo, Omega, R, lambda1, U, maxIters, fitchangetol, als_printitn);        
+    Yo = Y-O;
+    [U,X] = sofia_als(Yo, Omega, R, lambda1, U, maxIters, fitchangetol, als_printitn);
 
     O = thres_soft(Y-X,lambda3);
     lambda3 = lambda3 * 0.85;
@@ -58,18 +61,18 @@ for epoch = 1:maxEpoch
     
     if verbose >= 1
         if epoch == 1
-            fprintf('  sofia_init: epoch %2d: norm(Xpre) = %e, norm(X) = %e\n', ...
-                epoch, normXpre, normX);
+            %fprintf('  sofia_init: epoch %2d: norm(Xpre) = %e, norm(X) = %e\n', ...
+            %    epoch, normXpre, normX);
         else
-            fprintf('  sofia_init: epoch %2d: norm(Xpre) = %e, norm(X) = %e, relative_change = %g\n', ...
-                epoch, normXpre, normX, relative_change);
+            %fprintf('  sofia_init: epoch %2d: norm(Xpre) = %e, norm(X) = %e, relative_change = %g\n', ...
+            %    epoch, normXpre, normX, relative_change);
         end
     end
     
     if converge
-        fprintf(' sofia_init: epoch %2d: norm(Xpre) = %e, norm(X) = %e, relative_change = %g\n', ...
-            epoch, normXpre, normX, relative_change);
-        fprintf(' sofia_init: converge!\n');
+        %fprintf(' sofia_init: epoch %2d: norm(Xpre) = %e, norm(X) = %e, relative_change = %g\n', ...
+        %    epoch, normXpre, normX, relative_change);
+        %fprintf(' sofia_init: converge!\n');
         break;
     end
 end

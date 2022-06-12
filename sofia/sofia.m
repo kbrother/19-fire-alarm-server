@@ -50,7 +50,6 @@ t_begin_hw = tic();
 t_elapsed_hw = toc(t_begin_hw);
 
 
-
 %% Initialize error scale tensor
 sigma = 0.1.*ones([Ysz(1),Ysz(2)]);
 
@@ -73,15 +72,17 @@ for t=ti+1:ntimes
     
     cRt = Omegat .* cRt;
     
-    G = cell(N,1);
-    G{1} = cRt * U{2} * diag(U{N});
-    G{2} = cRt' * U{1} * diag(U{N});
-    G{3} = (khatrirao(U{1},U{2})' * reshape(cRt,[],1))' + lambda1 * (W(t-1,:)-U{N});
-    
-    for n=1:N
-        G{n} = G{n} * min(1, mu * sqrt(R)/norm(G{n}, 'fro')); % What?
-        U{n} = U{n} + mu * G{n};
-    end
+    for i=1:1
+        G = cell(N,1);
+        G{1} = cRt * U{2} * diag(U{N});
+        G{2} = cRt' * U{1} * diag(U{N});
+        G{3} = (khatrirao(U{1},U{2})' * reshape(cRt,[],1))' + lambda1 * (W(t-1,:)-U{N});
+
+        for n=1:N
+            G{n} = G{n} * min(1, mu * sqrt(R)/norm(G{n}, 'fro')); % What?
+            U{n} = U{n} + mu * G{n};
+        end
+    end    
     
     for n=1:N-1
         weights = sqrt(sum(U{n}.^2, 1));
@@ -97,8 +98,7 @@ for t=ti+1:ntimes
         info.scale_dynamic_elapsed = [info.scale_dynamic_elapsed, toc(t_begin_dynamic_update)];
     end
     
-    X_hat(colons{:},t) = double(full(ktensor(U)));
-    
+    X_hat(colons{:},t) = double(full(ktensor(U)));    
     if needOutlier
         O(colons{:},t) = Yt-(Yt_hat+cRt);
     end

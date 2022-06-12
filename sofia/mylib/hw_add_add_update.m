@@ -14,6 +14,6 @@ for t=len+1:len+n
     l(t,:) = y_alpha(t-len,:) + alphac .* (l(t-1,:) + b(t-1,:));
     b(t,:) = beta .* (l(t,:) - l(t-1,:)) + betac .* b(t-1,:);
 end
-l(1,:) = [];
-b(1,:) = [];
+l(1:len,:) = [];
+b(1:len,:) = [];
 end

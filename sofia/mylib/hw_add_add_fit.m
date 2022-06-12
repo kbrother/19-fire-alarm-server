@@ -8,7 +8,7 @@ k = size(y, 2);
 f = zeros(2, k);
 
 for i=1:k
-    [y_hat(:,i), l(:,i), b(:,i), f(:,i)] = hw_add_add_fit_internal(y(:,i));    
+    [y_hat(:,i), l(:,i), b(:,i), f(:,i)] = hw_add_add_fit_internal(y(:,i));
 end
 
 end
@@ -23,6 +23,7 @@ if ~isrow(y)
     y = y';
 end
 
+
 %% Init Parameters
 [l0, b0] = hw_add_add_init_values(y);
 init_alpha = 0.5;
@@ -32,7 +33,6 @@ x_init = [init_alpha, init_beta, l0, b0];
 lower = [0, 0, -Inf, -Inf];
 upper = [1, 1, Inf, Inf];
 max_fval = Inf;
-%disp("init params");
 
 %% Function Handle
 funchandle = @(x) hw_add_add_sse_fun(x, y, max_fval);
@@ -50,7 +50,6 @@ loc = x_init >= upper;
 lb = lower;
 lb(lb == -Inf) = -bound;
 x_init(loc) = upper(loc) - eps .*(upper(loc) - lb(loc));
-%disp("function handle");
 
 %% Optimization
 %TODO: 
@@ -68,7 +67,6 @@ options = optimoptions('fmincon', 'HessianApproximation', 'bfgs', ...
 [x,fval,exitflag,output] = fmincon(funchandle, x_init, [], [], [], [], ...
                                    lower, upper, [], options);
 fval;
-%disp("optimization");
 % exitflag
 % output
                                
@@ -123,6 +121,7 @@ end
 
 
 function f = hw_add_add_sse_fun(x, y, max_fval)
+
 len = length(y);
 alpha = x(1);
 beta = x(2);
@@ -152,6 +151,7 @@ end
 
 f = norm((l + b) - y)^2;
 end
+
 
 
 function [y_hat, l, b] = hw_add_add_predict(x, y)

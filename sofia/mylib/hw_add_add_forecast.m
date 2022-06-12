@@ -5,5 +5,6 @@ y_forecast = zeros(h, k);
 for t=1:h
     y_forecast(t,:) = l(end,:) + t .* b(end,:);
 end
+
 end
 
