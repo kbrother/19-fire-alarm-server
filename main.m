@@ -1,6 +1,6 @@
 %  ~/MATLAB/R2021a/bin/matlab -nodisplay -nodesktop -r "run('main.m');"
 % ps -A | grep MATLAB | awk '{print $1}' | xargs kill -9 $1
-% mosquitto_sub -h 143.248.221.190 -u kaist_fire -P 'KaistFire!123' -t /PRE_S/SFAS81 > sfas81.txt
+% mosquitto_sub -h 143.248.221.190 -u kaist_fire -P 'KaistFire!123' -t /PRE_S/SFAS91 > sfas91_ours_0613.txt
 addpath(genpath('lib'));
 addpath(genpath('sofia'));
 addpath(genpath('sofia/mylib'));
@@ -105,16 +105,16 @@ function initialize_tensor(topic, msg, num_channel, window_len)
 		end
 
 		if real_num_id.(topic){i} > 0
-			init_tensor.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);
-			init_tensor_mean.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);
-			init_tensor_std.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);	
+			init_tensor.(topic){i} = tenzeros([real_num_id.(topic){i} 7 0.1*window_len]);
+			init_tensor_mean.(topic){i} = tenzeros([real_num_id.(topic){i} 7 0.1*window_len]);
+			init_tensor_std.(topic){i} = tenzeros([real_num_id.(topic){i} 7 0.1*window_len]);	
 			weighted_sum.(topic){i} = zeros(real_num_id.(topic){i}, 7);
 			weighted_sq_sum.(topic){i} = zeros(real_num_id.(topic){i}, 7);					
 		end	
 	end 		
 end
 
-function fill_tensor(topic, msg, num_channel, time_stamp)
+function fill_tensor(topic, msg, num_channel, time_stamp, window_len)
 	global X_last
 	global init_tensor			
 	global init_tensor_mean
@@ -129,39 +129,19 @@ function fill_tensor(topic, msg, num_channel, time_stamp)
 		num_id = max(msg(i).id);
 		if real_num_id.(topic){i} == 0
 			continue
-		end		
-		idx_cnt = 1;	
-		for j=1:num_id				
-			if msg(i).err(j) ~= 0
-				continue
-			end			
-			init_tensor.(topic){i}(idx_cnt, 1, time_stamp) = msg(i).temp(j);
-			init_tensor.(topic){i}(idx_cnt, 2, time_stamp) = msg(i).hum(j);
-			init_tensor.(topic){i}(idx_cnt, 3, time_stamp) = msg(i).pm1(j);
-			init_tensor.(topic){i}(idx_cnt, 4, time_stamp) = msg(i).pm2(j);
-			init_tensor.(topic){i}(idx_cnt, 5, time_stamp) = msg(i).pm10(j);
-			init_tensor.(topic){i}(idx_cnt, 6, time_stamp) = msg(i).co2(j);
-			init_tensor.(topic){i}(idx_cnt, 7, time_stamp) = msg(i).co(j);			
-			%fprintf("fill tensor end\n"); 					
-			idx_cnt = idx_cnt + 1;
-		end			
+		end				
 
-		curr_matrix = double(init_tensor.(topic){i}(:, :, time_stamp));
-		X_last.(topic){i} = curr_matrix;		
-		weighted_sum.(topic){i} = alpha * weighted_sum.(topic){i} + curr_matrix; 		
-		weighted_sq_sum.(topic){i} = alpha * weighted_sq_sum.(topic){i} + curr_matrix .* curr_matrix;				
+		init_tensor.(topic){i}(:, :, time_stamp - 0.9*window_len) = X_last.(topic){i};				
 		curr_mean = weighted_sum.(topic){i} / alpha_sum.(topic);
 		curr_std = sqrt(weighted_sq_sum.(topic){i} / alpha_sum.(topic) - curr_mean .* curr_mean);				
-		init_tensor_mean.(topic){i}(:, :, time_stamp) = curr_mean;
-		init_tensor_std.(topic){i}(:, :, time_stamp) = curr_std;					
+		init_tensor_mean.(topic){i}(:, :, time_stamp - 0.9*window_len) = curr_mean;
+		init_tensor_std.(topic){i}(:, :, time_stamp - 0.9*window_len) = curr_std;					
 	end	
 end
 
-function update_window(topic, msg, num_channel)	
+function update_weight(topic, msg, num_channel)	
 	global X_last;
-	global init_tensor			
-	global init_tensor_mean
-	global init_tensor_std		
+	global init_tensor				
 	global alpha	
 	global weighted_sum
 	global weighted_sq_sum
@@ -170,8 +150,8 @@ function update_window(topic, msg, num_channel)
 	for i=1:num_channel			
 		if real_num_id.(topic){i} > 0				
 			idx_cnt = 1;
-			num_id = max(msg(i).id);
-			curr_matrix = zeros(real_num_id.(topic){i}, 7);			
+			num_id = max(msg(i).id);							
+			curr_matrix = zeros(real_num_id.(topic){i}, 7);						
 			for j=1:num_id
 				if msg(i).err(j) == 0
 					curr_matrix(idx_cnt, 1) = msg(i).temp(j);
@@ -184,10 +164,10 @@ function update_window(topic, msg, num_channel)
 					idx_cnt = idx_cnt + 1;
 				end
 			end			
-			
+
 			X_last.(topic){i} = curr_matrix;			
 			weighted_sum.(topic){i} = alpha * weighted_sum.(topic){i} + curr_matrix;					
-			weighted_sq_sum.(topic){i} = alpha * weighted_sq_sum.(topic){i} + curr_matrix .* curr_matrix;					
+			weighted_sq_sum.(topic){i} = alpha * weighted_sq_sum.(topic){i} + curr_matrix .* curr_matrix;								
 		end		
 	end	
 end
@@ -264,8 +244,8 @@ function cb(topic, msg)
 
 	lambda1 = 0.001;
 	lambda3 = 10;
-	mu = 0.01;
-	window_len = 100;
+	mu = 0.05;
+	window_len = 1000;
 	num_gd = 1;
 	rank = 20;
 
@@ -280,34 +260,68 @@ function cb(topic, msg)
 			return
 		end
 	end
-	
+
+	% Intialize count	
 	if ~isfield(cnt, topic)
 		cnt.(topic) = 1;
 	else
 		cnt.(topic) = cnt.(topic) + 1;
 	end
 
+	% Intialize / update alpha
 	if cnt.(topic) == 1
 		alpha_sum.(topic) = 0;			
 	end	
 	alpha_sum.(topic) = alpha*alpha_sum.(topic) + 1;
 	
+	% Initialize tensor
 	num_channel = size(jsondata.cfd, 1);
     if cnt.(topic) == 1		
 		initialize_tensor(topic, jsondata.cfd, num_channel, window_len);	   
 		disp("init finish");
     end
 
-	if cnt.(topic) <= window_len
-		fill_tensor(topic, jsondata.cfd, num_channel, cnt.(topic));
+	% Fill init tensor	
+	update_weight(topic, jsondata.cfd, num_channel);		
+	if and(cnt.(topic) > 0.9*window_len, cnt.(topic) <= window_len)
+		fill_tensor(topic, jsondata.cfd, num_channel, cnt.(topic), window_len);		
 		disp("fill finish");
 	end
 	
-	if cnt.(topic) > window_len
-		update_window(topic, jsondata.cfd, num_channel);				
-		normalize_matrix(jsondata.cfd, topic, num_channel);		
-		
-		% Dynamic updates			
+	% Intialize sofia
+	if cnt.(topic) == window_len
+		% Normalize tensor
+		normalize_init_tensor(jsondata.cfd, topic, num_channel);				
+		for i=1:num_channel		
+			% Initialization
+			if real_num_id.(topic){i} > 0
+				omega_temp = logical(double(tenones([real_num_id.(topic){i} 7 0.1*window_len])));
+				%disp(init_tensor.(topic){i});				
+				[U_init, X_hat.(topic), O.(topic), ~] = sofia_init(init_tensor.(topic){i}, omega_temp, rank, lambda1, lambda3);							
+				U.(topic){i, 1} = U_init{1};											
+				U.(topic){i, 2} = U_init{2};				
+				W_init = U_init{3};					
+				for n=1:2
+					weights = sqrt(sum(U.(topic){i, n}.^2, 1));
+					U.(topic){i, n} = U.(topic){i, n} ./ weights;
+					W_init = W_init .* weights;
+				end
+				W.(topic){i} = W_init(end, :);
+
+				% HW fitting				
+				[~,L.(topic){i},B.(topic){i},F.(topic){i}] = hw_add_add_fit(W_init);								
+
+				% Initialize error scale tensor
+				Ysz = size(init_tensor.(topic){i});
+				sigma.(topic){i} = 0.1*ones([Ysz(1), Ysz(2)]);							
+			end
+		end		
+		disp("init finish");
+	end	
+
+	% Dynamic updates	
+	if cnt.(topic) > window_len			
+		normalize_matrix(jsondata.cfd, topic, num_channel);						
 		output_json.pre = cell(num_channel, 1);
 		for i=1:num_channel		
 			num_id = max(jsondata.cfd(i).id);
@@ -419,36 +433,7 @@ function cb(topic, msg)
 		output_json = jsonencode(output_json);
 		publish(fireMQTT, strcat('/PRE_S/', topic), output_json);	
 		publish(fireMQTT, strcat('/PRE_T/', topic), msg);
-	end	
-	
-	if cnt.(topic) == window_len
-		% Normalize tensor
-		normalize_init_tensor(jsondata.cfd, topic, num_channel);				
-		for i=1:num_channel		
-			% Initialization
-			if real_num_id.(topic){i} > 0
-				omega_temp = logical(double(tenones([real_num_id.(topic){i} 7 window_len])));
-				%disp(init_tensor.(topic){i});				
-				[U_init, X_hat.(topic), O.(topic), ~] = sofia_init(init_tensor.(topic){i}, omega_temp, rank, lambda1, lambda3);							
-				U.(topic){i, 1} = U_init{1};											
-				U.(topic){i, 2} = U_init{2};				
-				W_init = U_init{3};					
-				for n=1:2
-					weights = sqrt(sum(U.(topic){i, n}.^2, 1));
-					U.(topic){i, n} = U.(topic){i, n} ./ weights;
-					W_init = W_init .* weights;
-				end
-				W.(topic){i} = W_init(window_len, :);
-
-				% HW fitting				
-				[~,L.(topic){i},B.(topic){i},F.(topic){i}] = hw_add_add_fit(W_init);								
-
-				% Initialize error scale tensor
-				Ysz = size(init_tensor.(topic){i});
-				sigma.(topic){i} = 0.1*ones([Ysz(1), Ysz(2)]);							
-			end
-		end		
-	end	
+	end			
 end
 
 
