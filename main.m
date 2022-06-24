@@ -1,16 +1,29 @@
-%  ~/MATLAB/R2021a/bin/matlab -nodisplay -nodesktop -r "run('main.m');"
+%  ~/MATLAB/R2022a/bin/matlab -nodisplay -nodesktop -r "run('main.m');"
 % ps -A | grep MATLAB | awk '{print $1}' | xargs kill -9 $1
 % mosquitto_sub -h 143.248.221.190 -u kaist_fire -P 'KaistFire!123' -t /PRE_S/SFAS91 > sfas91_ours_0613.txt
 addpath(genpath('lib'));
 addpath(genpath('sofia'));
 addpath(genpath('sofia/mylib'));
 addpath(genpath('MQTT'))
-javaaddpath('MQTT/jar/org.eclipse.paho.client.mqttv3-1.1.0.jar')
-javaaddpath('MQTT/mqttasync.jar')
+warning('off')
+%javaaddpath('MQTT/jar/org.eclipse.paho.client.mqttv3-1.1.0.jar')
+%javaaddpath('MQTT/mqttasync.jar')
 
-fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");
+%fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");
 declare_tensor();
-fireSub = subscribe(fireMQTT, '/CFD/#', 'Callback', @cb);
+%fireSub = subscribe(fireMQTT, '/CFD/SFAS91', 'Callback', @test_cb);
+
+brokerAddress = 'tcp://143.248.221.190';
+port = 1883;
+connection(brokerAddress, port);
+
+% function for subscribe
+function connection(brokerAddress, port)
+	global mqClient
+	mqClient = mqttclient(brokerAddress, Port=port, Username="kaist_fire", Password="KaistFire!123");
+	mysub = subscribe(mqClient, '/CFD/#', Callback=@cb);
+	disp(mysub);
+end
 
 % function that initialize topic list
 function declare_tensor
@@ -36,7 +49,7 @@ function declare_tensor
 	global cnt
 
 	sfas53_cnt = 0;
-	alpha = 0.99;
+	alpha = 0.6;
 	%alpha_sum = 0;	
 	alpha_sum = struct;
 	init_tensor = struct;
@@ -105,9 +118,9 @@ function initialize_tensor(topic, msg, num_channel, window_len)
 		end
 
 		if real_num_id.(topic){i} > 0
-			init_tensor.(topic){i} = tenzeros([real_num_id.(topic){i} 7 0.1*window_len]);
-			init_tensor_mean.(topic){i} = tenzeros([real_num_id.(topic){i} 7 0.1*window_len]);
-			init_tensor_std.(topic){i} = tenzeros([real_num_id.(topic){i} 7 0.1*window_len]);	
+			init_tensor.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);
+			init_tensor_mean.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);
+			init_tensor_std.(topic){i} = tenzeros([real_num_id.(topic){i} 7 window_len]);	
 			weighted_sum.(topic){i} = zeros(real_num_id.(topic){i}, 7);
 			weighted_sq_sum.(topic){i} = zeros(real_num_id.(topic){i}, 7);					
 		end	
@@ -131,11 +144,11 @@ function fill_tensor(topic, msg, num_channel, time_stamp, window_len)
 			continue
 		end				
 
-		init_tensor.(topic){i}(:, :, time_stamp - 0.9*window_len) = X_last.(topic){i};				
+		init_tensor.(topic){i}(:, :, time_stamp) = X_last.(topic){i};					
 		curr_mean = weighted_sum.(topic){i} / alpha_sum.(topic);
 		curr_std = sqrt(weighted_sq_sum.(topic){i} / alpha_sum.(topic) - curr_mean .* curr_mean);				
-		init_tensor_mean.(topic){i}(:, :, time_stamp - 0.9*window_len) = curr_mean;
-		init_tensor_std.(topic){i}(:, :, time_stamp - 0.9*window_len) = curr_std;					
+		init_tensor_mean.(topic){i}(:, :, time_stamp) = curr_mean;
+		init_tensor_std.(topic){i}(:, :, time_stamp) = curr_std;							
 	end	
 end
 
@@ -226,7 +239,11 @@ function denorm_Xhat = denormalize_matrix(Xhat, topic, channel_id)
 	denorm_Xhat = Xhat .* std_mat + avg_mat;	
 end
 
-function cb(topic, msg)
+function test_cb(topic, data)
+	jsondecode(data);
+end
+
+function cb(topic, data)
 	global init_tensor	
 	global U
 	global O
@@ -241,25 +258,19 @@ function cb(topic, msg)
 	global alpha_sum
 	global alpha
 	global cnt
+	global mqClient
 
 	lambda1 = 0.001;
 	lambda3 = 10;
-	mu = 0.05;
-	window_len = 1000;
-	num_gd = 1;
+	mu = 0.01;
+	window_len = 100;	
 	rank = 20;
 
 	% temp hum pm1 pm2 pm10 co2 co
-	fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");    
-	jsondata = jsondecode(msg);
+	%fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");    		
+	jsondata = jsondecode(data);
     topic = split(topic, "/");
 	topic = topic{3};
-	if topic == "SFAS53"
-		sfas53_cnt = sfas53_cnt + 1;
-		if rem(sfas53_cnt, 2) == 1
-			return
-		end
-	end
 
 	% Intialize count	
 	if ~isfield(cnt, topic)
@@ -268,12 +279,12 @@ function cb(topic, msg)
 		cnt.(topic) = cnt.(topic) + 1;
 	end
 
-	% Intialize / update alpha
+	% Intialize / update alpha	
 	if cnt.(topic) == 1
 		alpha_sum.(topic) = 0;			
 	end	
 	alpha_sum.(topic) = alpha*alpha_sum.(topic) + 1;
-	
+		
 	% Initialize tensor
 	num_channel = size(jsondata.cfd, 1);
     if cnt.(topic) == 1		
@@ -283,7 +294,7 @@ function cb(topic, msg)
 
 	% Fill init tensor	
 	update_weight(topic, jsondata.cfd, num_channel);		
-	if and(cnt.(topic) > 0.9*window_len, cnt.(topic) <= window_len)
+	if cnt.(topic) <= window_len
 		fill_tensor(topic, jsondata.cfd, num_channel, cnt.(topic), window_len);		
 		disp("fill finish");
 	end
@@ -295,32 +306,33 @@ function cb(topic, msg)
 		for i=1:num_channel		
 			% Initialization
 			if real_num_id.(topic){i} > 0
-				omega_temp = logical(double(tenones([real_num_id.(topic){i} 7 0.1*window_len])));
-				%disp(init_tensor.(topic){i});				
+				omega_temp = logical(double(tenones([real_num_id.(topic){i} 7 window_len])));
+				%disp(init_tensor.(topic){i});					
 				[U_init, X_hat.(topic), O.(topic), ~] = sofia_init(init_tensor.(topic){i}, omega_temp, rank, lambda1, lambda3);							
 				U.(topic){i, 1} = U_init{1};											
 				U.(topic){i, 2} = U_init{2};				
-				W_init = U_init{3};					
+				W_init = U_init{3};						
 				for n=1:2
 					weights = sqrt(sum(U.(topic){i, n}.^2, 1));
 					U.(topic){i, n} = U.(topic){i, n} ./ weights;
 					W_init = W_init .* weights;
-				end
-				W.(topic){i} = W_init(end, :);
+				end;
+				W.(topic){i} = W_init(end, :);				
 
-				% HW fitting				
+				% HW fitting		
+				%disp(W_init);
 				[~,L.(topic){i},B.(topic){i},F.(topic){i}] = hw_add_add_fit(W_init);								
 
 				% Initialize error scale tensor
 				Ysz = size(init_tensor.(topic){i});
-				sigma.(topic){i} = 0.1*ones([Ysz(1), Ysz(2)]);							
+				sigma.(topic){i} = 0.1*ones([Ysz(1), Ysz(2)]);										
 			end
 		end		
-		disp("init finish");
+		disp("sofia init finish");
 	end	
 
 	% Dynamic updates	
-	if cnt.(topic) > window_len			
+	if cnt.(topic) > window_len				
 		normalize_matrix(jsondata.cfd, topic, num_channel);						
 		output_json.pre = cell(num_channel, 1);
 		for i=1:num_channel		
@@ -338,20 +350,18 @@ function cb(topic, msg)
 										
 				cRt = Omega_temp .* cRt;			
 				G = cell(3, 1);
+				
+				G{1} = cRt * U.(topic){i, 2} * diag(U_N);
+				G{2} = cRt' * U.(topic){i, 1} * diag(U_N);													
+				G{3} = (khatrirao(U.(topic){i, 1},U.(topic){i, 2})' * reshape(cRt,[],1))' + lambda1 * (W.(topic){i} - U_N);
+						
+				for n=1:2
+					G{n} = G{n} * min(1, mu * sqrt(rank)/norm(G{n}, 'fro')); % What?
+					U.(topic){i, n} = U.(topic){i, n} + mu * G{n};
+				end					
 
-				for j=1:num_gd
-					G{1} = cRt * U.(topic){i, 2} * diag(U_N);
-					G{2} = cRt' * U.(topic){i, 1} * diag(U_N);													
-					G{3} = (khatrirao(U.(topic){i, 1},U.(topic){i, 2})' * reshape(cRt,[],1))' + lambda1 * (W.(topic){i} - U_N);
-							
-					for n=1:2
-			            G{n} = G{n} * min(1, mu * sqrt(rank)/norm(G{n}, 'fro')); % What?
-            			U.(topic){i, n} = U.(topic){i, n} + mu * G{n};
-					end					
-
-					G{3} = G{3} * min(1, mu * sqrt(rank)/norm(G{3}, 'fro')); % What?
-            		U_N = U_N + mu * G{3};					
-				end
+				G{3} = G{3} * min(1, mu * sqrt(rank)/norm(G{3}, 'fro')); % What?
+				U_N = U_N + mu * G{3};					
 
 				for n=1:2
 					weights = sqrt(sum(U.(topic){i, n}.^2, 1));
@@ -430,9 +440,8 @@ function cb(topic, msg)
 				output_json.pre{i} = jsondata.cfd(i);
 			end	
 		end				
-		output_json = jsonencode(output_json);
-		publish(fireMQTT, strcat('/PRE_S/', topic), output_json);	
-		publish(fireMQTT, strcat('/PRE_T/', topic), msg);
+		output_json = jsonencode(output_json);					
+		write(mqClient, strcat('/PRE_S/', topic), output_json);				
 	end			
 end
 
