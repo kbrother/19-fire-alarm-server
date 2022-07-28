@@ -9,10 +9,7 @@ warning('off')
 %javaaddpath('MQTT/jar/org.eclipse.paho.client.mqttv3-1.1.0.jar')
 %javaaddpath('MQTT/mqttasync.jar')
 
-%fireMQTT = mqtt('tcp://143.248.221.190', 'Username', 'kaist_fire', 'Port', 1883, 'Password', "KaistFire!123");
 declare_tensor();
-%fireSub = subscribe(fireMQTT, '/CFD/SFAS91', 'Callback', @test_cb);
-
 brokerAddress = 'tcp://143.248.221.190';
 port = 1883;
 connection(brokerAddress, port);
@@ -138,21 +135,26 @@ function fill_tensor(topic, msg, num_channel, time_stamp, window_len)
 	global weighted_sq_sum
 	global real_num_id
 	
+	alpha_sum.(topic) = alpha*alpha_sum.(topic) + 1;
 	for i=1:num_channel				
 		num_id = max(msg(i).id);
 		if real_num_id.(topic){i} == 0
 			continue
-		end				
+		end						
+
+		curr_matrix = X_last.(topic){i};				
+		weighted_sum.(topic){i} = alpha * weighted_sum.(topic){i} + curr_matrix;					
+		weighted_sq_sum.(topic){i} = alpha * weighted_sq_sum.(topic){i} + curr_matrix .* curr_matrix;	
 
 		init_tensor.(topic){i}(:, :, time_stamp) = X_last.(topic){i};					
 		curr_mean = weighted_sum.(topic){i} / alpha_sum.(topic);
 		curr_std = sqrt(weighted_sq_sum.(topic){i} / alpha_sum.(topic) - curr_mean .* curr_mean);				
 		init_tensor_mean.(topic){i}(:, :, time_stamp) = curr_mean;
-		init_tensor_std.(topic){i}(:, :, time_stamp) = curr_std;							
+		init_tensor_std.(topic){i}(:, :, time_stamp) = curr_std;									
 	end	
 end
 
-function update_weight(topic, msg, num_channel)	
+function parse_traffic(topic, msg, num_channel)	
 	global X_last;
 	global init_tensor				
 	global alpha	
@@ -160,11 +162,11 @@ function update_weight(topic, msg, num_channel)
 	global weighted_sq_sum
 	global real_num_id
 
-	for i=1:num_channel			
+	for i=1:num_channel	
 		if real_num_id.(topic){i} > 0				
-			idx_cnt = 1;
-			num_id = max(msg(i).id);							
-			curr_matrix = zeros(real_num_id.(topic){i}, 7);						
+			idx_cnt = 1;			
+			num_id = max(msg(i).id);										
+			curr_matrix = zeros(real_num_id.(topic){i}, 7);									
 			for j=1:num_id
 				if msg(i).err(j) == 0
 					curr_matrix(idx_cnt, 1) = msg(i).temp(j);
@@ -176,12 +178,9 @@ function update_weight(topic, msg, num_channel)
 					curr_matrix(idx_cnt, 7) = msg(i).co(j);	
 					idx_cnt = idx_cnt + 1;
 				end
-			end			
-
-			X_last.(topic){i} = curr_matrix;			
-			weighted_sum.(topic){i} = alpha * weighted_sum.(topic){i} + curr_matrix;					
-			weighted_sq_sum.(topic){i} = alpha * weighted_sq_sum.(topic){i} + curr_matrix .* curr_matrix;								
-		end		
+			end	
+			X_last.(topic){i} = curr_matrix;																			
+		end				
 	end	
 end
 
@@ -224,19 +223,27 @@ function normalize_matrix(msg, topic, num_channel)
 	end
 end
 
-function denorm_Xhat = denormalize_matrix(Xhat, topic, channel_id)
+function denorm_Xhat = denormalize_matrix(Xhat, topic, channel_id, outlier)
 	global tensor_window
 	global Yt
 	global weighted_sum
 	global weighted_sq_sum
 	global real_num_id
 	global alpha_sum
+	global alpha
+	global X_last;
 
 	assert(real_num_id.(topic){channel_id} > 0);
 	avg_mat = weighted_sum.(topic){channel_id} / alpha_sum.(topic);
 	std_mat = sqrt(weighted_sq_sum.(topic){channel_id} / alpha_sum.(topic) - avg_mat .* avg_mat);
 	std_mat(std_mat < 1e-3) = 1e-3;
+
+	denorm_O = outlier .* std_mat;
+	denorm_O(abs(denorm_O) < 500) = 0;
 	denorm_Xhat = Xhat .* std_mat + avg_mat;	
+
+	weighted_sum.(topic){channel_id} = alpha * weighted_sum.(topic){channel_id} + (X_last.(topic){channel_id} - denorm_O);
+	weighted_sq_sum.(topic){channel_id} = alpha * weighted_sq_sum.(topic){channel_id} + (X_last.(topic){channel_id}-denorm_O) .* (X_last.(topic){channel_id}-denorm_O);	
 end
 
 function test_cb(topic, data)
@@ -259,6 +266,8 @@ function cb(topic, data)
 	global alpha
 	global cnt
 	global mqClient
+	global weighted_sq_sum
+	global weighted_sum
 
 	lambda1 = 0.001;
 	lambda3 = 10;
@@ -283,7 +292,6 @@ function cb(topic, data)
 	if cnt.(topic) == 1
 		alpha_sum.(topic) = 0;			
 	end	
-	alpha_sum.(topic) = alpha*alpha_sum.(topic) + 1;
 		
 	% Initialize tensor
 	num_channel = size(jsondata.cfd, 1);
@@ -293,8 +301,8 @@ function cb(topic, data)
     end
 
 	% Fill init tensor	
-	update_weight(topic, jsondata.cfd, num_channel);		
-	if cnt.(topic) <= window_len
+	parse_traffic(topic, jsondata.cfd, num_channel);		
+	if cnt.(topic) <= window_len							
 		fill_tensor(topic, jsondata.cfd, num_channel, cnt.(topic), window_len);		
 		disp("fill finish");
 	end
@@ -374,7 +382,8 @@ function cb(topic, data)
 				W.(topic){i} = U_N;
 
 				X_hat = double(full(ktensor({U.(topic){i, 1}, U.(topic){i, 2}, U_N})));
-				denorm_X_hat = denormalize_matrix(X_hat, topic, i);								
+				outlier = Yt.(topic){i} - (Ythat + cRt);			
+				denorm_X_hat = denormalize_matrix(X_hat, topic, i, outlier);								
 				denorm_X_hat(denorm_X_hat < 0) = 1e-3;
 				idx_cnt = 1;
 
@@ -442,6 +451,7 @@ function cb(topic, data)
 		end				
 		output_json = jsonencode(output_json);					
 		write(mqClient, strcat('/PRE_S/', topic), output_json);				
+		alpha_sum.(topic) = alpha*alpha_sum.(topic) + 1;
 	end			
 end
 
